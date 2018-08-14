@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <execution>
 
+//SDSL's suffix tree will not process data which contain zeroes ('\0'), so we need to escape \0 with other characters.
+//In practise, to reduce space, zeros (toBeEscaped) are swapped with the least frequent character (subsituteCharacter)
 struct EscapeData {
 	void recalculateEstimatedNewSize(const std::vector<std::uint8_t>& newSource)
 	{
@@ -13,9 +15,9 @@ struct EscapeData {
 		this->estimatedNewSize += std::count(std::execution::par_unseq, newSource.begin(), newSource.end(), this->escape);
 	}
 
-	//escape = escape escae, escape should be the ValueType appeared less frequently
-	//(real) substiteCharacter = escape escape2
-	//toBeEscaped = substitueCharacter
+	//escapes are represented with: [escape escape]
+	//substiteCharacters are represented with: [escape escape2]
+	//toBeEscaped are represented with: [substitueCharacter]
 	std::uint8_t toBeEscaped;
 	std::uint8_t substituteCharacter;
 	std::uint8_t escape;

@@ -263,3 +263,4 @@ __pycache__/
 *.big
 /patchbig.txt
 /patchchs.txt
+*.patchbig

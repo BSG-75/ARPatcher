@@ -1,6 +1,8 @@
 #pragma once
-#include <stdexcept>
+#include <cstdint>
+#include <climits>
 #include <limits>
+#include <stdexcept>
 #include <vector>
 #include <filesystem>
 #include <string_view>
@@ -8,6 +10,8 @@
 #include <ostream>
 #include "Escape.hpp"
 
+//DataChunk can represent a chunk inside the "old file" (with length and sourcePosition), or store data inside itself
+//In the second case, sourcePosition == -1 and length == data.size()
 struct DataChunk {
 	DataChunk() : length{ 0 }, sourcePosition{ 0 }, data{} {}
 
@@ -32,19 +36,25 @@ struct DataChunk {
 	static constexpr std::size_t lowestReferencedBytesCount = 32;
 };
 
-template<typename T>
-void writeAsCharArray(std::ostream& out, const T& data)
+void writeLittleEndianUInt32(std::ostream& out, std::uint32_t value)
 {
-	out.write(reinterpret_cast<const char*>(&data), sizeof(data) / sizeof(char));
-};
+	for (auto i = 0; i < sizeof(value); ++i)
+	{
+		out << static_cast<unsigned char>(value >> (i * CHAR_BIT));
+	}
+}
 
-template<typename T>
-T readFromCharArray(std::istream& in)
+std::uint32_t readLittleEndianUInt32(std::istream& in)
 {
-	auto data = T{};
-	in.read(reinterpret_cast<char*>(&data), sizeof(data) / sizeof(char));
-	return data;
-};
+	auto result = std::uint32_t{ 0 };
+	for (auto i = 0; i < sizeof(result); ++i)
+	{
+		auto input = unsigned char{};
+		in >> input;
+		result = result | (input << (i * CHAR_BIT));
+	}
+	return result;
+}
 
 struct PatchData {
 	int version;
@@ -100,7 +110,8 @@ constexpr auto delimiter = u8"\r\n"sv;
 
 */
 
-void writeChunks(std::ostream& out, const PatchData& patchData)
+template<typename OStream>
+void writeChunks(OStream&& out, const PatchData& patchData)
 {
 	constexpr auto supportedVersion = 1000;
 	if (patchData.version != supportedVersion)
@@ -109,6 +120,7 @@ void writeChunks(std::ostream& out, const PatchData& patchData)
 	}
 
 	out.exceptions(out.exceptions() | out.badbit | out.failbit);
+	out << std::noskipws;
 
 	out.write(patchFileHeader.data(), patchFileHeader.size());
 	out << patchData.version;
@@ -139,8 +151,8 @@ void writeChunks(std::ostream& out, const PatchData& patchData)
 	out.write(delimiter.data(), delimiter.size());
 	for (const auto& chunk : patchData.dataChunks)
 	{
-		writeAsCharArray(out, chunk.length);
-		writeAsCharArray(out, chunk.sourcePosition);
+		writeLittleEndianUInt32(out, chunk.length);
+		writeLittleEndianUInt32(out, chunk.sourcePosition);
 		if (chunk.sourcePosition == static_cast<decltype(chunk.sourcePosition)>(-1))
 		{
 			out.write(reinterpret_cast<const char*>(chunk.data.data()), chunk.length);
@@ -153,6 +165,7 @@ PatchData readChunks(IStream&& in)
 {
 	constexpr auto supportedVersion = 1000;
 	in.exceptions(in.exceptions() | in.badbit | in.failbit);
+	in >> std::noskipws;
 
 	auto patchData = PatchData{};
 	auto checkHeader = [](std::istream& in, std::string_view check) {
@@ -182,13 +195,13 @@ PatchData readChunks(IStream&& in)
 	auto oldFileNameString = std::string{ readSizeType(in),{}, std::string::allocator_type{} };
 	checkHeader(in, delimiter);
 	in.read(oldFileNameString.data(), oldFileNameString.size());
-	patchData.oldFileName = filesystem::u8path(oldFileNameString);
+	patchData.oldFileName = std::filesystem::u8path(oldFileNameString);
 	checkHeader(in, delimiter);
-
+	
 	auto newFileNameString = std::string{ readSizeType(in),{}, std::string::allocator_type{} };
 	checkHeader(in, delimiter);
 	in.read(newFileNameString.data(), newFileNameString.size());
-	patchData.newFileName = filesystem::u8path(newFileNameString);
+	patchData.newFileName = std::filesystem::u8path(newFileNameString);
 	checkHeader(in, delimiter);
 
 	auto readUnsignedInt8Bit = [](std::istream& in) {
@@ -214,8 +227,8 @@ PatchData readChunks(IStream&& in)
 	checkHeader(in, delimiter);
 	for (auto& chunk : patchData.dataChunks)
 	{
-		chunk.length = readFromCharArray<decltype(chunk.length)>(in);
-		chunk.sourcePosition = readFromCharArray<decltype(chunk.sourcePosition)>(in);
+		chunk.length = readLittleEndianUInt32(in);
+		chunk.sourcePosition = readLittleEndianUInt32(in);
 		if (chunk.sourcePosition == static_cast<decltype(chunk.sourcePosition)>(-1))
 		{
 			chunk.data.resize(chunk.length);
@@ -251,7 +264,13 @@ std::vector<std::uint8_t> getNewFileContent(const std::vector<std::uint8_t>& esc
 	return unescape(newFileData, patchData.escapeData);
 }
 
-void writeNewFileContent(std::ostream& out, const std::vector<std::uint8_t>& escapedOldFile, const PatchData& patchData, std::size_t maxBufferSize)
+auto voidNoOperation = [](...) {};
+template<typename ShowProgress = decltype(voidNoOperation)>
+void writeNewFileContent(std::ostream& out, 
+	const std::vector<std::uint8_t>& escapedOldFile, 
+	const PatchData& patchData, 
+	std::size_t maxBufferSize,
+	ShowProgress showProgress = voidNoOperation)
 {
 	out.exceptions(out.exceptions() | out.badbit | out.failbit);
 	auto newFileData = std::vector<std::uint8_t>{};
@@ -274,6 +293,7 @@ void writeNewFileContent(std::ostream& out, const std::vector<std::uint8_t>& esc
 
 		if (newFileData.size() > maxBufferSize && newFileData.back() != patchData.escapeData.escape)
 		{
+			showProgress(newFileData.size());
 			newFileData = unescape(newFileData, patchData.escapeData);
 			out.write(reinterpret_cast<const char*>(newFileData.data()), newFileData.size());
 			newFileData.clear();

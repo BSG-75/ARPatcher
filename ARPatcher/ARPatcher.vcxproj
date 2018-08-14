@@ -92,6 +92,7 @@
     <ClInclude Include="Patch.hpp" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="Utilities.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ARPatcher.cpp" />

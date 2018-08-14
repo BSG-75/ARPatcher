@@ -5,37 +5,10 @@
 #include <string>
 #include <algorithm>
 #include <cstdint>
+
+#include "../ARPatcher/Utilities.hpp"
 #include "../ARPatcher/Escape.hpp"
 #include "../ARPatcher/Patch.hpp"
-
-namespace filesystem = std::filesystem;
-
-template<typename ValueType>
-std::vector<ValueType> readEntireFile(const filesystem::path& path)
-{
-	auto fileSize = filesystem::file_size(path);
-	std::cerr << path << " file size: " << fileSize << std::endl;
-	if (fileSize % sizeof(ValueType) != 0)
-	{
-		throw std::runtime_error{ "fileSize % sizeof(ValueType) != 0" };
-	}
-
-	auto buffer = std::vector<ValueType>{};
-	buffer.resize(static_cast<std::size_t>(fileSize) / sizeof(ValueType));
-
-	auto input = std::ifstream{ path, std::ios::binary };
-
-	input.read(reinterpret_cast<char*>(buffer.data()), buffer.size() * sizeof(ValueType));
-	auto bytesRead = input.gcount();
-	if (bytesRead != fileSize)
-	{
-		throw std::runtime_error{ "bytesRead != fileSize" };
-	}
-	std::cerr << "File read, number of elements = " << buffer.size() << std::endl;
-	buffer.shrink_to_fit();
-	return buffer;
-};
-
 
 void printUsage()
 {
@@ -54,8 +27,9 @@ int main(int argc, char* argv[])
 {
 	try
 	{
-		std::cerr << "Patch tool based on SDSL Compressed Suffix Tree - Test version" << std::endl;
-		std::cerr << "Contact lanyi <lanyi@ra3.moe>, or post a thread on RA3Bar <https://tieba.baidu.com/ra3> for any questions" << std::endl;
+		std::cerr << "Patch tool based on SDSL Compressed Suffix Tree - Test version" << std::endl
+			<< "Contact lanyi <lanyi@ra3.moe>, or post a thread on RA3Bar <https://tieba.baidu.com/ra3> for any questions" << std::endl
+			<< "The source code is available on Github: https://github.com/BSG-75/ARPatcher/" << std::endl;
 		if (argc < 2)
 		{
 			printUsage();
@@ -76,7 +50,7 @@ int main(int argc, char* argv[])
 			try
 			{
 				std::cerr << "Reading index file " << argument << "..." << std::endl;
-				auto indexFileName = filesystem::path{ argument };
+				auto indexFileName = std::filesystem::path{ argument };
 				auto patchData = readChunks(std::ifstream{ indexFileName, std::ifstream::binary });
 				auto indexFileDirectory = indexFileName.parent_path();
 				auto inputFileName = indexFileDirectory / patchData.oldFileName;
@@ -86,8 +60,17 @@ int main(int argc, char* argv[])
 
 				auto output = std::ofstream{ outputFileName, std::ofstream::binary };
 				output.exceptions(output.exceptions() | output.badbit | output.failbit);
-				writeNewFileContent(output, escape(readEntireFile<std::uint8_t>(inputFileName), patchData.escapeData), patchData, maxBufferSize);
-				std::cerr << "Successfully created file " << outputFileName << "." << std::endl;
+				auto expectedSum = std::accumulate(patchData.dataChunks.begin(), patchData.dataChunks.end(), std::size_t{ 0 }, 
+					[](std::size_t sum, const DataChunk& chunk) {
+					return sum += chunk.length;
+				});
+				writeNewFileContent(output, 
+					escape(readEntireFile<std::uint8_t>(inputFileName), patchData.escapeData), patchData, maxBufferSize,
+					[expectedSum, progress = 0](std::size_t delta) mutable {
+					progress += delta;
+					std::cerr << makeMetricPrefix(progress) << "B (" << makePercent(progress, expectedSum) << ")          \r";
+				});
+				std::cerr << "Successfully created file " << outputFileName << ".      " << std::endl;
 			}
 			catch (const std::exception& e)
 			{
