@@ -67,7 +67,7 @@ struct PatchData {
 using namespace std::string_view_literals;
 
 constexpr auto latestPatchDataVersion = 1000;
-constexpr auto patchFileHeader = u8"ºì¾¯3°É×°¼×³å»÷¸üĞÂÃèÊöÎÄ¼ş"sv;
+constexpr auto patchFileHeader = u8"çº¢è­¦3å§è£…ç”²å†²å‡»æ›´æ–°æè¿°æ–‡ä»¶"sv;
 constexpr auto delimiter = u8"\r\n"sv;
 
 /*
