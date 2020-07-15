@@ -6,8 +6,9 @@
 #include <algorithm>
 #include <cstdint>
 
+#include <Escape.hpp>
+#include <PatchData.hpp>
 #include "../ARPatcher/Utilities.hpp"
-#include "../ARPatcher/Escape.hpp"
 #include "../ARPatcher/Patch.hpp"
 
 void printUsage()

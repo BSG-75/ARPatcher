@@ -24,9 +24,6 @@
     <ClInclude Include="Patch.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Escape.hpp">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="Utilities.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
